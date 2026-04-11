@@ -87,9 +87,10 @@ class BenchmarkMatrixRequest(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "0.3.0"
-    tests_passing: int = 31
-    claims_validated: str = "P3 (55 claims) + P4 (75 claims)"
+    benchmark_version: str = "1.0.0"
+    # AUDIT ROUND 2 FIX C9: Removed hardcoded tests_passing and patent_claims.
+    # These values go stale with each audit round. Patent info lives in
+    # docs/PRIOR_ART.md and README.md, not in the health endpoint.
 
 
 # =============================================================================
@@ -137,7 +138,8 @@ app.add_middleware(
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
-    return HealthResponse()
+    from roch3.__version__ import __benchmark_version__
+    return HealthResponse(benchmark_version=__benchmark_version__)
 
 
 @app.post("/benchmark/run", response_model=BenchmarkResponse)
@@ -278,7 +280,8 @@ async def websocket_live(ws: WebSocket):
                     "convergence_ms": round(result.convergence_time_ms, 3),
                     "agent_count": result.agent_count,
                     "void_fraction": round(result.void_snapshot.get("void_fraction", 0), 3),
-                    "trust_scores": {k: round(v, 3) for k, v in result.trust_scores.items()},
+                    # SOVEREIGNTY: trust_scores keyed by anonymous index, never agent_id
+                    "trust_scores": {str(k): round(v, 3) for k, v in result.trust_scores.items()},
                 })
                 # Yield to event loop
                 await asyncio.sleep(0)

@@ -164,6 +164,10 @@ class ARGUSTrustChannel:
         self._initial_trust: float = 1.0
         self._decay_rate: float = 0.05  # per suspicious observation
         self._recovery_rate: float = 0.01  # per clean observation
+        # AUDIT ROUND 2 FIX C6: Anti-reidentification via index rotation
+        self._ROTATION_INTERVAL: int = 10  # Rotate indices every N calls
+        self._rotation_counter: int = 0
+        self._current_permutation: list[int] | None = None
 
     def update_trust(self, agent_id: str, observation: dict) -> float:
         """
@@ -200,6 +204,9 @@ class ARGUSTrustChannel:
                 "trust_after": current,
                 "timestamp": time.time(),
             })
+            # Bound history to prevent unbounded growth in long sessions
+            if len(self._history[agent_id]) > 200:
+                self._history[agent_id] = self._history[agent_id][-200:]
             return current
 
     def push_weights_to_buffer(self) -> None:
@@ -225,12 +232,62 @@ class ARGUSTrustChannel:
         with self._lock:
             return self._trust_scores.get(agent_id, self._initial_trust)
 
-    def get_all_scores(self) -> dict[str, float]:
-        """Get all trust scores. Used for flight recorder logging."""
+    def _get_all_scores(self) -> dict[str, float]:
+        """
+        Get all trust scores keyed by agent_id.
+        INTERNAL USE ONLY — never expose via API.
+        Use get_anonymized_scores() for any external interface.
+        """
         with self._lock:
             return dict(self._trust_scores)
 
-    def get_history(self, agent_id: str, last_n: int = 10) -> list[dict]:
+    def get_anonymized_scores(self) -> dict[int, float]:
+        """
+        Trust scores keyed by ROTATED anonymous index, not agent_id.
+
+        SOVEREIGNTY GUARANTEE: this is the ONLY method that should
+        be exposed via API responses. Returning agent_id-keyed scores
+        leaks identity and violates the sovereignty guarantee.
+
+        AUDIT ROUND 2 FIX C6: Indices rotate every ROTATION_INTERVAL
+        calls to prevent reidentification by temporal correlation.
+        The rotation makes it impossible for an observer to track
+        a specific agent's trust evolution across rotation boundaries.
+        No noise ε — preserves benchmark reproducibility.
+        """
+        with self._lock:
+            # Build raw index-keyed scores
+            raw: dict[int, float] = {}
+            for agent_id, score in self._trust_scores.items():
+                idx = self._buffer.get_index_for_agent(agent_id)
+                if idx is not None:
+                    raw[idx] = score
+
+            if not raw:
+                return {}
+
+            # Rotate permutation periodically
+            n = max(raw.keys()) + 1 if raw else 0
+            self._rotation_counter += 1
+            if (self._current_permutation is None
+                    or len(self._current_permutation) < n
+                    or self._rotation_counter % self._ROTATION_INTERVAL == 0):
+                import random as _rng
+                perm = list(range(n))
+                _rng.shuffle(perm)
+                self._current_permutation = perm
+
+            # Apply permutation
+            result: dict[int, float] = {}
+            for idx, score in raw.items():
+                if idx < len(self._current_permutation):
+                    rotated = self._current_permutation[idx]
+                else:
+                    rotated = idx
+                result[rotated] = score
+            return result
+
+    def _get_history(self, agent_id: str, last_n: int = 10) -> list[dict]:
         """Get recent observation history for an agent."""
         with self._lock:
             return list(self._history.get(agent_id, [])[-last_n:])

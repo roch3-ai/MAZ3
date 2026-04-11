@@ -169,19 +169,27 @@ class GammaOperator:
         Risk: Max per cell (pessimistic).
         The shared risk is the WORST assessment for each cell.
         Never produce a less safe assessment than any individual agent.
+
+        IMPORTANT: Risk is NOT weighted by trust. The conservative
+        composition guarantee requires that the maximum risk from
+        ANY agent prevails, regardless of trust score. Trust weighting
+        applies to intent and spatial fields — never to risk.
+
+        This is a deliberate design decision per P4 spec Section 3.1:
+        "risk is maximized per spatial cell: the highest risk assessment
+        from any agent prevails."
+
+        Rationale: a low-trust agent reporting high risk may still be
+        correct. Discounting their risk would produce an MVR LESS safe
+        than the most cautious assessment, violating Theorem 2.
         """
         merged: dict[str, float] = {}
 
         for f in fields:
             cell_risks = f["risk_gradient"].get("cell_risks", {})
-            trust = f.get("_trust_weight", 1.0)
-
+            # NO trust weighting — pure max per cell
             for cell_id, risk in cell_risks.items():
-                # Trust-weighted risk: low-trust agents' risk is discounted
-                # BUT we still take max — a low-trust agent claiming high risk
-                # means we should be cautious (conservative)
-                weighted_risk = risk * trust
-                if cell_id not in merged or weighted_risk > merged[cell_id]:
-                    merged[cell_id] = weighted_risk
+                if cell_id not in merged or risk > merged[cell_id]:
+                    merged[cell_id] = risk
 
         return {"cell_risks": merged}

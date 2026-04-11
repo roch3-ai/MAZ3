@@ -92,8 +92,9 @@ class ConstraintSet:
     regulatory_zones: list[dict] = field(default_factory=list)  # no-go zones
 
     def to_dict(self) -> dict:
+        import copy
         return {"max_speed": self.max_speed, "min_separation": self.min_separation,
-                "regulatory_zones": self.regulatory_zones}
+                "regulatory_zones": copy.deepcopy(self.regulatory_zones)}
 
     @classmethod
     def from_dict(cls, d: dict) -> ConstraintSet:
@@ -113,7 +114,8 @@ class RiskGradient:
         return max(self.cell_risks.values()) if self.cell_risks else 0.0
 
     def to_dict(self) -> dict:
-        return {"cell_risks": self.cell_risks}
+        import copy
+        return {"cell_risks": copy.deepcopy(self.cell_risks)}
 
     @classmethod
     def from_dict(cls, d: dict) -> RiskGradient:
@@ -159,10 +161,37 @@ class MVRProjection:
             risk_gradient=RiskGradient.from_dict(d["risk_gradient"]),
         )
 
+    def to_json(self) -> str:
+        """
+        JSON-serializable representation. For wire transport (ROS 2, MQTT, gRPC).
+
+        The MAZ3 SDK is designed to be wrappable by ROS 2 and other robotics
+        middleware. This method produces a JSON string with only primitive types
+        (no numpy arrays, no datetime objects, no custom classes).
+        """
+        import json
+        return json.dumps(self.to_dict())
+
+    @classmethod
+    def from_json(cls, json_str: str) -> MVRProjection:
+        """Reconstruct from JSON wire format."""
+        import json
+        return cls.from_dict(json.loads(json_str))
+
     def validate(self) -> list[str]:
         """Basic validity checks. Returns list of errors (empty = valid)."""
+        import math
         errors = []
         env = self.spatial_envelope
+
+        # AUDIT ROUND 2 FIX C3: Reject NaN/Inf in spatial_envelope
+        for field_name, value in [
+            ("x_min", env.x_min), ("x_max", env.x_max),
+            ("y_min", env.y_min), ("y_max", env.y_max),
+        ]:
+            if not math.isfinite(value):
+                errors.append(f"spatial_envelope.{field_name} is {value} (must be finite)")
+
         if env.x_min >= env.x_max or env.y_min >= env.y_max:
             errors.append("spatial_envelope: degenerate (min >= max)")
         if env.area() > 10000:  # sanity: >100m × 100m is suspect
@@ -175,6 +204,15 @@ class MVRProjection:
             errors.append("constraint_set: non-positive max_speed")
         if self.constraint_set.min_separation < 0:
             errors.append("constraint_set: negative min_separation")
+
+        # AUDIT ROUND 2 FIX C2: DOS defense — limit risk_gradient cells
+        MAX_RISK_CELLS = 10_000
+        if len(self.risk_gradient.cell_risks) > MAX_RISK_CELLS:
+            errors.append(
+                f"risk_gradient: {len(self.risk_gradient.cell_risks)} cells "
+                f"exceeds maximum {MAX_RISK_CELLS}"
+            )
+
         for cell_id, risk in self.risk_gradient.cell_risks.items():
             if not (0.0 <= risk <= 1.0):
                 errors.append(f"risk_gradient: cell {cell_id} risk {risk} out of [0,1]")

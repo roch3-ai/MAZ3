@@ -59,8 +59,19 @@ class OmniscientCoordinator(BaseAgent):
     def sense(self, environment: dict) -> None:
         if "boundary" in environment:
             self._boundary = environment["boundary"]
-        # Omniscient: gets all agent positions from environment
-        self._all_agents = environment.get("all_agents", [])
+        # NOTE: omniscient info no longer comes from environment.
+        # The engine pushes it via _set_omniscient_info() backdoor.
+
+    def _set_omniscient_info(self, all_agents_info: list[dict]) -> None:
+        """
+        Backdoor channel — only the engine calls this.
+
+        Normal agents do not have this method, so the engine's
+        _push_omniscient_info() never reaches them. This is the
+        structural enforcement that omniscient access is reserved
+        for the internal reference coordinator.
+        """
+        self._all_agents = all_agents_info
 
     def infer(self) -> None:
         px, py = self._state.position
@@ -83,9 +94,11 @@ class OmniscientCoordinator(BaseAgent):
         min_dist = float("inf")
 
         for other in self._all_agents:
-            if other.get("agent_id") == self._agent_id:
-                continue
+            # AUDIT ROUND 2 FIX C1: No agent_id in snapshot anymore.
+            # Self-exclude by position match instead.
             ox, oy = other.get("position", (0, 0))
+            if (abs(ox - px) < 0.001 and abs(oy - py) < 0.001):
+                continue
             rx = px - ox
             ry = py - oy
             r_dist = math.sqrt(rx * rx + ry * ry)

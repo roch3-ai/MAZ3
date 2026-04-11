@@ -23,6 +23,7 @@ Patent ref: P4 Section 3.1 (Syncference Protocol), P3 (Kinetic Deference)
 
 from __future__ import annotations
 
+import copy
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -63,7 +64,7 @@ class CycleResult:
     void_snapshot: dict
     shared_mvr: dict
     attacks_detected: list = field(default_factory=list)  # attack type names this cycle
-    trust_scores: dict = field(default_factory=dict)  # {agent_id: score}
+    trust_scores: dict = field(default_factory=dict)  # {anonymous_index: score} — NEVER agent_ids
 
 
 class SimulationEngine:
@@ -98,6 +99,7 @@ class SimulationEngine:
         self._session_id: Optional[str] = None
         self._running: bool = False
         self._history: list[CycleResult] = []
+        self._max_history: int = 1000  # bound to prevent memory leak
 
     def add_agent(self, agent: BaseAgent) -> None:
         """Register an agent for the simulation."""
@@ -122,11 +124,13 @@ class SimulationEngine:
 
     def initialize(self) -> str:
         """Initialize the simulation. Returns session_id."""
+        from roch3.__version__ import __benchmark_version__
         self._recorder.initialize()
         self._session_id = self._recorder.create_session(
             scenario=self._config.scenario,
             network_profile=self._config.network_profile,
             agent_count=len(self._agents),
+            maze_version=__benchmark_version__,
         )
         self._cycle = 0
         self._running = True
@@ -178,6 +182,8 @@ class SimulationEngine:
         # =============================================================
         for agent in self._agents.values():
             agent.sense(environment)
+        # Backdoor: only OmniscientCoordinator (internal reference) opts in
+        self._push_omniscient_info()
 
         # =============================================================
         # Phase 2 — INFER
@@ -301,8 +307,56 @@ class SimulationEngine:
             # If deference level requires it, modify shared_mvr to constrain agent
             effective_mvr = self._apply_deference(shared_mvr, action)
 
+            # Capture position BEFORE agent acts (for D3/D4 rollback)
+            position_before = tuple(agent.position)
+
             # Agent acts with (potentially constrained) MVR
+            # NOTE: a malicious agent may ignore the MVR. The motor
+            # enforces D2/D3/D4 below, regardless of agent compliance.
             agent.act(effective_mvr, self._config.dt)
+
+            # =========================================================
+            # PHYSICAL ENFORCEMENT — D3/D4 cannot be ignored by agents
+            # =========================================================
+            # Without this, D3/D4 would be merely advisory. A malicious
+            # agent could ignore the shared MVR and keep moving. This
+            # block is what makes P3's "physically enforced" claim true
+            # in MAZ3: the engine intercepts the agent's state after act()
+            # and overrides it if the deference level demands it.
+            # =========================================================
+            if action.level >= DeferenceLevel.D3:
+                # D3 (commanded stop) / D4 (emergency veto):
+                # Agent CANNOT move. Position is rolled back to before act().
+                agent.engine_override_state(
+                    position=position_before,
+                    velocity=(0.0, 0.0),
+                )
+            elif action.level == DeferenceLevel.D2:
+                # D2 (speed correction):
+                # Cap velocity to the constraint and recompute position.
+                max_spd = effective_mvr.get("constraint_set", {}).get(
+                    "max_speed", self._config.boundary[2]
+                )
+                vx, vy = agent.velocity
+                spd = (vx * vx + vy * vy) ** 0.5
+                if spd > max_spd > 0:
+                    scale = max_spd / spd
+                    new_vx = vx * scale
+                    new_vy = vy * scale
+                    new_pos = (
+                        position_before[0] + new_vx * self._config.dt,
+                        position_before[1] + new_vy * self._config.dt,
+                    )
+                    # Clamp to boundary
+                    bx0, by0, bx1, by1 = self._config.boundary
+                    new_pos = (
+                        max(bx0 + 0.1, min(bx1 - 0.1, new_pos[0])),
+                        max(by0 + 0.1, min(by1 - 0.1, new_pos[1])),
+                    )
+                    agent.engine_override_state(
+                        position=new_pos,
+                        velocity=(new_vx, new_vy),
+                    )
 
         # =============================================================
         # Record to flight recorder
@@ -338,6 +392,7 @@ class SimulationEngine:
                     )
 
         # Build result
+        # SOVEREIGNTY: trust scores are anonymized (keyed by index, not agent_id)
         result = CycleResult(
             cycle=self._cycle,
             harmony=harmony,
@@ -346,9 +401,14 @@ class SimulationEngine:
             deference_actions=deference_actions,
             void_snapshot=void_snap,
             shared_mvr=shared_mvr,
-            trust_scores=self._argus.get_all_scores(),
+            trust_scores=self._argus.get_anonymized_scores(),
         )
         self._history.append(result)
+        # Bound history to prevent memory leak in long-running sessions.
+        # Flight recorder is the source of truth — _history is just a
+        # convenience for tests and recent-state queries.
+        if len(self._history) > self._max_history:
+            self._history = self._history[-self._max_history:]
         return result
 
     # =================================================================
@@ -356,23 +416,47 @@ class SimulationEngine:
     # =================================================================
 
     def _build_environment(self) -> dict:
-        """Build the environment dict that agents perceive in Phase 1."""
-        env = {
+        """Build the environment dict that agents perceive in Phase 1.
+
+        SOVEREIGNTY: this dict goes to ALL agents. It must contain only
+        information that any agent can legitimately observe (boundary,
+        cycle counter, public obstacles). It must NEVER contain
+        per-agent state — that would leak identity and position to
+        every other agent.
+
+        For OmniscientCoordinator (internal reference only), the engine
+        provides a separate backdoor channel via _push_omniscient_info().
+        """
+        return {
             "boundary": self._config.boundary,
             "cycle": self._cycle,
             "nearby_obstacles": [],
         }
-        # Provide global agent info for OmniscientCoordinator
-        # Normal agents ignore this field — only Omniscient reads it
-        env["all_agents"] = [
+
+    def _push_omniscient_info(self) -> None:
+        """
+        Backdoor channel for OmniscientCoordinator only.
+
+        Agents that opt in by exposing _set_omniscient_info() receive
+        global agent state. Normal agents do NOT have this method, so
+        no information leaks. This is the structural enforcement of the
+        rule that omniscient access is internal/reference-only.
+        """
+        # AUDIT ROUND 2 FIX C1: Use anonymous indices, never agent_ids.
+        # Even the omniscient backdoor must not leak identity —
+        # sovereignty is architecture, not policy.
+        snapshot = [
             {
-                "agent_id": a.agent_id,
+                "index": idx,
                 "position": a.position,
                 "velocity": a.velocity,
             }
-            for a in self._agents.values()
+            for idx, a in enumerate(self._agents.values())
         ]
-        return env
+        for agent in self._agents.values():
+            if hasattr(agent, "_set_omniscient_info"):
+                # Only agents that explicitly opt in receive this
+                agent._set_omniscient_info(snapshot)
 
     def _apply_deference(self, shared_mvr: dict, action) -> dict:
         """
@@ -387,9 +471,10 @@ class SimulationEngine:
         if action.level == DeferenceLevel.D0:
             return shared_mvr
 
-        # Copy to avoid mutating original
-        modified = dict(shared_mvr) if shared_mvr else {}
-        constraints = dict(modified.get("constraint_set", {}))
+        # Deep copy to prevent mutation of shared state
+        # (shallow dict() copy was leaking nested mutations)
+        modified = copy.deepcopy(shared_mvr) if shared_mvr else {}
+        constraints = modified.get("constraint_set", {})
 
         if action.level == DeferenceLevel.D1:
             modified["_advisory"] = {
@@ -426,3 +511,14 @@ class SimulationEngine:
 
     def get_session_id(self) -> Optional[str]:
         return self._session_id
+
+    def _get_internal_trust(self, agent_id: str) -> float:
+        """
+        INTERNAL/TESTING ONLY. Get trust score by agent_id.
+
+        This method exists to allow internal testing and operator
+        oversight (Supervisability axiom). It must NEVER be exposed
+        through the public API or WebSocket interfaces — those use
+        anonymized indices only.
+        """
+        return self._argus.get_trust_score(agent_id)

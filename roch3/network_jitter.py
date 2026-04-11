@@ -17,7 +17,6 @@ Patent ref: P3 Claims related to network resilience, P4 SparkNet layer
 from __future__ import annotations
 
 import math
-import random
 from dataclasses import dataclass
 from typing import Optional
 

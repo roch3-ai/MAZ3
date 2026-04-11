@@ -68,13 +68,14 @@ def test_spatial_inflation_detected():
     engine.add_agent(honest)
     engine.add_agent(inflator)
     session_id = engine.initialize()
-    results = engine.run(60)
 
-    # Check trust scores over time
-    # Before activation (cycle 20): trust should be high
-    trust_before = results[15].trust_scores.get("inflator_1", 1.0)
-    # After activation: trust should degrade
-    trust_after = results[-1].trust_scores.get("inflator_1", 1.0)
+    # Run until just before attack activation
+    engine.run(15)
+    trust_before = engine._get_internal_trust("inflator_1")
+
+    # Run the rest
+    engine.run(45)
+    trust_after = engine._get_internal_trust("inflator_1")
 
     print(f"  Trust before attack (cycle 15): {trust_before:.4f}")
     print(f"  Trust after attack (cycle 60):  {trust_after:.4f}")
@@ -127,10 +128,10 @@ def test_risk_underreporting_detected():
     engine.add_agent(honest)
     engine.add_agent(underreporter)
     session_id = engine.initialize()
-    results = engine.run(60)
-
-    trust_before = results[10].trust_scores.get("underreporter_1", 1.0)
-    trust_after = results[-1].trust_scores.get("underreporter_1", 1.0)
+    engine.run(10)
+    trust_before = engine._get_internal_trust("underreporter_1")
+    engine.run(50)
+    trust_after = engine._get_internal_trust("underreporter_1")
 
     print(f"  Trust at cycle 10: {trust_before:.4f}")
     print(f"  Trust at cycle 60: {trust_after:.4f}")
@@ -221,9 +222,10 @@ def test_mixed_honest_adversarial():
     min_h = min(h_values)
 
     # Trust of attacker should be much lower than honest agents
-    final_trust = results[-1].trust_scores
-    honest_trust = min(final_trust.get("honest_a", 1.0), final_trust.get("honest_b", 1.0))
-    attacker_trust = final_trust.get("attacker", 1.0)
+    honest_a_trust = engine._get_internal_trust("honest_a")
+    honest_b_trust = engine._get_internal_trust("honest_b")
+    attacker_trust = engine._get_internal_trust("attacker")
+    honest_trust = min(honest_a_trust, honest_b_trust)
 
     print(f"  avg_H_p: {avg_h:.4f}, min_H_p: {min_h:.4f}")
     print(f"  Honest agent trust: {honest_trust:.4f}")
@@ -351,19 +353,19 @@ def test_trust_score_timeline():
     engine.add_agent(honest)
     engine.add_agent(inflator)
     engine.initialize()
-    results = engine.run(80)
 
-    # Extract trust timeline for attacker
-    trust_timeline = []
-    for r in results:
-        trust = r.trust_scores.get("bad_agent", 1.0)
-        trust_timeline.append((r.cycle, trust))
+    # Run cycle by cycle, querying trust at checkpoints
+    trust_checkpoints = {}
+    for i in range(80):
+        engine.step()
+        cycle = i + 1
+        if cycle in (10, 30, 50, 80):
+            trust_checkpoints[cycle] = engine._get_internal_trust("bad_agent")
 
-    # Trust at key points
-    trust_c10 = trust_timeline[9][1]   # Before attack
-    trust_c30 = trust_timeline[29][1]  # 10 cycles into attack
-    trust_c50 = trust_timeline[49][1]  # 30 cycles into attack
-    trust_c80 = trust_timeline[79][1]  # End
+    trust_c10 = trust_checkpoints[10]
+    trust_c30 = trust_checkpoints[30]
+    trust_c50 = trust_checkpoints[50]
+    trust_c80 = trust_checkpoints[80]
 
     print(f"  Cycle 10 (pre-attack):  trust = {trust_c10:.4f}")
     print(f"  Cycle 30 (early attack): trust = {trust_c30:.4f}")

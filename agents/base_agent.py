@@ -167,6 +167,31 @@ class BaseAgent(ABC):
         self._cycle += 1
         self._state.cycle = self._cycle
 
+    def engine_override_state(
+        self,
+        position: tuple[float, float],
+        velocity: tuple[float, float],
+    ) -> None:
+        """
+        PHYSICAL ENFORCEMENT — only the simulation engine should call this.
+
+        This method exists to enforce D3/D4 deference levels at the
+        actuator level, simulating what a real safety system would do
+        (cut motor power, engage brakes, etc.). Without this, D3/D4 would
+        be merely advisory — agents could ignore the shared MVR and
+        keep moving.
+
+        Subclasses MUST NOT override this method. Doing so would defeat
+        the physical enforcement guarantee and break P3 Claim verification.
+
+        Patent ref: P3 — D3/D4 are physically enforced, not advisory
+        """
+        self._state.position = position
+        self._state.velocity = velocity
+        # Recompute speed from velocity
+        vx, vy = velocity
+        self._state.speed = (vx * vx + vy * vy) ** 0.5
+
     def get_info(self) -> dict:
         """Public info about this agent (for logging, not for other agents)."""
         return {

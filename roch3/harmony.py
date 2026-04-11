@@ -197,7 +197,7 @@ def compute_harmony_index(
     elif h_p >= THRESHOLD_ATTENTION:
         status = "attention"
     else:
-        status = "critical"
+        status = "intervene"
 
     return HarmonyResult(
         h_p=h_p,

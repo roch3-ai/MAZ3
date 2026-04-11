@@ -52,8 +52,6 @@ class AdversarialDetector:
 
         # Per-agent history: {index: [previous_projections]}
         self._projection_history: dict[int, list[dict]] = {}
-        # Per-agent expected envelope radius (inferred from movement)
-        self._inferred_radius: dict[int, float] = {}
 
     def analyze(
         self,
@@ -266,4 +264,3 @@ class AdversarialDetector:
 
     def clear(self) -> None:
         self._projection_history.clear()
-        self._inferred_radius.clear()

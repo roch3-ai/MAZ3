@@ -175,7 +175,7 @@ def test_argus_channel_separation():
     assert fields_after[0]["_trust_weight"] < 1.0, "Trust decay not applied after push"
 
     # ARGUS history contains agent_id (this is the authenticated channel)
-    history = argus.get_history("agent_X")
+    history = argus._get_history("agent_X")
     assert len(history) == 1
     assert history[0]["observation"]["type"] == "projection_poisoning"
 

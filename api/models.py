@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS maze_sessions (
     scenario TEXT NOT NULL,
     network_profile TEXT NOT NULL,
     agent_count INTEGER NOT NULL,
-    status TEXT DEFAULT 'active'
+    status TEXT DEFAULT 'active',
+    maze_version TEXT NOT NULL DEFAULT '1.0.0'
 );
 
 -- Flight snapshots (source of truth)
@@ -112,6 +113,22 @@ CREATE TABLE IF NOT EXISTS void_index_snapshots (
 
 CREATE INDEX IF NOT EXISTS idx_void_collapse
 ON void_index_snapshots(session_id, void_collapse_flag);
+
+-- Custom metrics (extension point for v2 industrial deployments)
+-- Phase 1 only creates the table; v1 doesn't write to it.
+-- v2 will use it for throughput, recovery_time, fairness, energy_proxy.
+CREATE TABLE IF NOT EXISTS custom_metrics (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES maze_sessions(id),
+    cycle_number INTEGER NOT NULL,
+    metric_name TEXT NOT NULL,
+    metric_value REAL NOT NULL,
+    metadata TEXT,
+    recorded_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_custom_metrics_name
+ON custom_metrics(session_id, metric_name);
 """
 
 
@@ -167,14 +184,17 @@ class FlightRecorder:
         scenario: str,
         network_profile: str,
         agent_count: int,
+        maze_version: str = "1.0.0",
     ) -> str:
         """Create a new maze session. Returns session_id."""
         session_id = _new_id()
         with self._cursor() as cur:
             cur.execute(
-                "INSERT INTO maze_sessions (id, created_at, scenario, network_profile, agent_count) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (session_id, _now_iso(), scenario, network_profile, agent_count),
+                "INSERT INTO maze_sessions "
+                "(id, created_at, scenario, network_profile, agent_count, maze_version) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (session_id, _now_iso(), scenario, network_profile,
+                 agent_count, maze_version),
             )
         return session_id
 
@@ -335,6 +355,63 @@ class FlightRecorder:
                 ),
             )
         return snapshot_id
+
+    # =========================================================================
+    # Custom metrics (extension point for v2)
+    # =========================================================================
+
+    def record_custom_metric(
+        self,
+        session_id: str,
+        cycle_number: int,
+        metric_name: str,
+        metric_value: float,
+        metadata: Optional[dict] = None,
+    ) -> str:
+        """
+        Record a custom metric. Extension point for v2 industrial deployments.
+
+        v1 (current) does not write to this table — but the schema exists
+        so v2 can add throughput, recovery_time, fairness, energy_proxy
+        without requiring data migration.
+        """
+        metric_id = _new_id()
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO custom_metrics "
+                "(id, session_id, cycle_number, metric_name, metric_value, "
+                "metadata, recorded_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    metric_id,
+                    session_id,
+                    cycle_number,
+                    metric_name,
+                    metric_value,
+                    json.dumps(metadata) if metadata else None,
+                    _now_iso(),
+                ),
+            )
+        return metric_id
+
+    def get_custom_metrics(
+        self, session_id: str, metric_name: Optional[str] = None
+    ) -> list[dict]:
+        """Query custom metrics, optionally filtered by metric_name."""
+        with self._cursor() as cur:
+            if metric_name:
+                cur.execute(
+                    "SELECT * FROM custom_metrics WHERE session_id = ? "
+                    "AND metric_name = ? ORDER BY cycle_number ASC",
+                    (session_id, metric_name),
+                )
+            else:
+                cur.execute(
+                    "SELECT * FROM custom_metrics WHERE session_id = ? "
+                    "ORDER BY cycle_number ASC",
+                    (session_id,),
+                )
+            return [dict(row) for row in cur.fetchall()]
 
     # =========================================================================
     # Queries for analysis
