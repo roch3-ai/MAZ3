@@ -3,7 +3,6 @@
 **Version:** 1.1.0
 **Tests:** 82 passing across 13 suites
 **Status:** Production-ready
-**Deadline:** May 15, 2026
 
 ## What is MAZ3?
 
@@ -171,8 +170,7 @@ When citing, include the version number. Benchmark numbers are not comparable ac
 
 - P3: Application 64/029,056 (Kinetic Deference, 55 claims)
 - P4: Application 64/030,395 (REPUBLIK OS, 75 claims)
-- Inventor: Gustavo Emmanuel Briones Jara
-- Filed under USPTO Micro Entity status
+
 
 Total ROCH3 portfolio: ~194 claims across 4 provisional applications.
 
@@ -183,4 +181,3 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 ---
 
 *ROCH3 — The TCP/IP of the Physical World*
-*Tepic, Nayarit, México*
