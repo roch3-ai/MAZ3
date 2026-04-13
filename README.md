@@ -155,11 +155,11 @@ D0 passive monitoring → D1 advisory → D2 speed correction → D3 physical st
 
 ```bibtex
 @misc{maz3_2026,
-  author       = {Briones Jara, Gustavo Emmanuel},
+  author       = {Adon Roche},
   title        = {MAZ3: Empirical Benchmark for Sovereign Multi-Agent Coordination},
   year         = {2026},
   version      = {1.1.0},
-  organization = {ROCH3},
+  organization = {ROCH3.com},
   url          = {https://github.com/roch3-ai/MAZ3}
 }
 ```
