@@ -1,0 +1,15 @@
+{
+  "scenario": "bottleneck",
+  "network": "wifi_warehouse",
+  "agent_type": "orca",
+  "n_runs": 500,
+  "hp_mean": 0.8067809522846958,
+  "hp_std": 0.05823299755591388,
+  "collision_rate_mean": 0.27073,
+  "collision_rate_std": 0.11926048476529393,
+  "task_completion_mean": 0.033999999999999996,
+  "task_completion_std": 0.12104164546821512,
+  "deadlock_frequency": 0.0,
+  "convergence_ms_mean": 0.02141664823003639,
+  "convergence_ms_std": 0.008769554370441576
+}

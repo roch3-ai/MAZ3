@@ -1,0 +1,15 @@
+{
+  "scenario": "bottleneck",
+  "network": "lora_mesh",
+  "agent_type": "mixed",
+  "n_runs": 500,
+  "hp_mean": 0.8785402594965785,
+  "hp_std": 0.015936138897443042,
+  "collision_rate_mean": 0.06018,
+  "collision_rate_std": 0.014411209731728413,
+  "task_completion_mean": 0.441,
+  "task_completion_std": 0.1614656071260042,
+  "deadlock_frequency": 0.0,
+  "convergence_ms_mean": 0.02102378214995394,
+  "convergence_ms_std": 0.002493632959917479
+}

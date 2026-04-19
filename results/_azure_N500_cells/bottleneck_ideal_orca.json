@@ -1,0 +1,15 @@
+{
+  "scenario": "bottleneck",
+  "network": "ideal",
+  "agent_type": "orca",
+  "n_runs": 500,
+  "hp_mean": 0.8467020648191114,
+  "hp_std": 0.0599624727490818,
+  "collision_rate_mean": 0.21798,
+  "collision_rate_std": 0.1378481913109323,
+  "task_completion_mean": 0.054,
+  "task_completion_std": 0.14303233841687457,
+  "deadlock_frequency": 0.0,
+  "convergence_ms_mean": 0.022696935720160242,
+  "convergence_ms_std": 0.014228135953577846
+}

@@ -1,0 +1,15 @@
+{
+  "scenario": "asymmetric_risk",
+  "network": "lora_mesh",
+  "agent_type": "greedy",
+  "n_runs": 500,
+  "hp_mean": 0.8979203046570116,
+  "hp_std": 0.011745406859276242,
+  "collision_rate_mean": 0.0,
+  "collision_rate_std": 0.0,
+  "task_completion_mean": 1.0,
+  "task_completion_std": 0.0,
+  "deadlock_frequency": 0.0,
+  "convergence_ms_mean": 0.02647021145286956,
+  "convergence_ms_std": 0.0036441365203094154
+}

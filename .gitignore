@@ -7,3 +7,10 @@ venv/
 *.egg-info/
 .DS_Store
 *.tar.gz
+
+# Intermediate benchmark artifacts (smoke tests, logs)
+results/_smoke_test/
+results/*_N2*.json
+results/*_N2*.md
+*.log
+run_*.log

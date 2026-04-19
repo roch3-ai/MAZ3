@@ -1,0 +1,15 @@
+{
+  "scenario": "asymmetric_risk",
+  "network": "ideal",
+  "agent_type": "greedy",
+  "n_runs": 500,
+  "hp_mean": 0.9889194595770155,
+  "hp_std": 0.00038905293053437544,
+  "collision_rate_mean": 0.0,
+  "collision_rate_std": 0.0,
+  "task_completion_mean": 1.0,
+  "task_completion_std": 0.0,
+  "deadlock_frequency": 0.0,
+  "convergence_ms_mean": 0.027664846693289533,
+  "convergence_ms_std": 0.002806407045691026
+}

@@ -1,0 +1,15 @@
+{
+  "scenario": "bottleneck",
+  "network": "ideal",
+  "agent_type": "omniscient_v2",
+  "n_runs": 500,
+  "hp_mean": 0.9655995490890582,
+  "hp_std": 0.0046662726241226025,
+  "collision_rate_mean": 0.0,
+  "collision_rate_std": 0.0,
+  "task_completion_mean": 0.0,
+  "task_completion_std": 0.0,
+  "deadlock_frequency": 0.0,
+  "convergence_ms_mean": 0.020503605119997364,
+  "convergence_ms_std": 0.002522124430751307
+}

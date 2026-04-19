@@ -1,0 +1,43 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Python caches and build artefacts
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+build
+dist
+
+# Virtual envs
+.venv
+venv
+env
+
+# Benchmark outputs (regenerated inside containers / aggregated by orchestrator)
+results
+*.log
+
+# Local DBs / scratch
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / editor cruft
+.DS_Store
+.idea
+.vscode
+
+# Node (should not be present, but belt-and-suspenders)
+node_modules
+
+# Docker itself
+Dockerfile
+.dockerignore

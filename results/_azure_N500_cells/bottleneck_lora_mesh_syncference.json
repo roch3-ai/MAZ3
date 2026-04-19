@@ -1,0 +1,15 @@
+{
+  "scenario": "bottleneck",
+  "network": "lora_mesh",
+  "agent_type": "syncference",
+  "n_runs": 500,
+  "hp_mean": 0.8917011846345032,
+  "hp_std": 0.016897299676013458,
+  "collision_rate_mean": 0.0,
+  "collision_rate_std": 0.0,
+  "task_completion_mean": 0.0,
+  "task_completion_std": 0.0,
+  "deadlock_frequency": 0.0,
+  "convergence_ms_mean": 0.01827769356999898,
+  "convergence_ms_std": 0.0028006971349267807
+}

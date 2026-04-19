@@ -1,0 +1,15 @@
+{
+  "scenario": "bottleneck",
+  "network": "wifi_warehouse",
+  "agent_type": "syncference",
+  "n_runs": 500,
+  "hp_mean": 0.9639460126328264,
+  "hp_std": 0.00823951797860255,
+  "collision_rate_mean": 0.0,
+  "collision_rate_std": 0.0,
+  "task_completion_mean": 0.0,
+  "task_completion_std": 0.0,
+  "deadlock_frequency": 0.0,
+  "convergence_ms_mean": 0.02405813338966759,
+  "convergence_ms_std": 0.001949679212162334
+}
