@@ -102,6 +102,29 @@ class ReferenceSyncferenceAgent(BaseAgent):
         boundary_risk = max(0.0, 1.0 - dist_to_boundary / 5.0)
         self._local_risks[cell_id] = min(1.0, boundary_risk * 0.5)
 
+        # Environmental risk zones (e.g. asymmetric_risk scenario) — sensed
+        # only within sensing_radius of the agent's position. Scenarios that
+        # don't publish risk_zones leave this block inert.
+        risk_zones = self._environment.get("risk_zones") or []
+        sensing_radius = self._environment.get("sensing_radius")
+        if sensing_radius is None:
+            sensing_radius = float("inf")
+        sr_sq = sensing_radius * sensing_radius if sensing_radius != float("inf") else None
+        for zone in risk_zones:
+            zc_x, zc_y = zone["center"]
+            hs = zone["half_size"]
+            val = zone["value"]
+            for ix in range(int(zc_x - hs), int(zc_x + hs) + 1):
+                for iy in range(int(zc_y - hs), int(zc_y + hs) + 1):
+                    if sr_sq is not None:
+                        dx = (ix + 0.5) - px
+                        dy = (iy + 0.5) - py
+                        if dx * dx + dy * dy > sr_sq:
+                            continue
+                    cid = f"{ix}_{iy}"
+                    if val > self._local_risks.get(cid, 0.0):
+                        self._local_risks[cid] = val
+
     # =================================================================
     # Phase 3 — SHARE (Projection)
     # =================================================================

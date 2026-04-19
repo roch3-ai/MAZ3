@@ -29,6 +29,10 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from agents.base_agent import BaseAgent
+from agents.baseline_agent import BaselineAgent
+from agents.omniscient_coordinator_v2 import (
+    AgentGroundTruth, OmniscientCoordinatorV2,
+)
 from roch3.sovereign_context import SovereignProjectionBuffer, ARGUSTrustChannel
 from roch3.convergence import GammaOperator
 from roch3.harmony import compute_harmony_index, HarmonyResult
@@ -51,6 +55,18 @@ class SimulationConfig:
     db_path: str = "maz3_flight_recorder.db"
     record_every_n: int = 1  # record snapshot every N cycles
     jitter_seed: Optional[int] = None
+    # When set, the engine replaces GammaOperator with an alternative
+    # coordinator for Phase 4. Currently supported: "omniscient_v2".
+    coordinator_override: Optional[str] = None
+    # Environmental risk zones published in the environment dict (seen by
+    # agents subject to sensing_radius) AND injected lossless into
+    # OmniscientCoordinatorV2's ground-truth risk field. Each zone is a dict:
+    # {"center": (cx, cy), "half_size": float, "value": risk in [0,1]}.
+    # Empty by default — Bottleneck and other scenarios are unaffected.
+    risk_zones: list[dict] = field(default_factory=list)
+    # Syncference sensing radius for risk_zones. Defaults to infinity so
+    # pre-existing scenarios (no risk_zones) remain bit-identical.
+    sensing_radius: float = float("inf")
 
 
 @dataclass
@@ -65,6 +81,9 @@ class CycleResult:
     shared_mvr: dict
     attacks_detected: list = field(default_factory=list)  # attack type names this cycle
     trust_scores: dict = field(default_factory=dict)  # {anonymous_index: score} — NEVER agent_ids
+    # Paper 1 v4 instrumentation (not used by sovereignty path):
+    collisions: int = 0            # pair-wise distance < min_separation/2 violations this cycle
+    mean_agent_speed: float = 0.0  # average |velocity| across all agents this cycle
 
 
 class SimulationEngine:
@@ -94,6 +113,15 @@ class SimulationEngine:
         self._detector = AdversarialDetector()
         self._recorder = FlightRecorder(config.db_path)
 
+        # Alternate coordinator (omniscient_v2). See Phase 4 branch in step().
+        self._omni_v2: Optional[OmniscientCoordinatorV2] = None
+        if config.coordinator_override == "omniscient_v2":
+            self._omni_v2 = OmniscientCoordinatorV2(horizon=2.0, dt=config.dt)
+        elif config.coordinator_override is not None:
+            raise ValueError(
+                f"Unknown coordinator_override: {config.coordinator_override!r}"
+            )
+
         # State
         self._cycle: int = 0
         self._session_id: Optional[str] = None
@@ -102,8 +130,43 @@ class SimulationEngine:
         self._max_history: int = 1000  # bound to prevent memory leak
 
     def add_agent(self, agent: BaseAgent) -> None:
-        """Register an agent for the simulation."""
+        """Register an agent for the simulation.
+
+        If the agent is a BaselineAgent, attach the engine hook that exposes
+        ground-truth neighbor information. Sovereign agents do not receive
+        this hook — sovereignty is architectural, not policy.
+        """
         self._agents[agent.agent_id] = agent
+        if isinstance(agent, BaselineAgent):
+            agent._engine_hook = self
+
+    def get_neighbors(
+        self, agent_id: str, radius: float,
+    ) -> list[tuple[str, tuple[float, float], tuple[float, float], float]]:
+        """
+        Return ground-truth state of agents within `radius` of `agent_id`.
+
+        ONLY invoked by BaselineAgent subclasses (via _engine_hook). Sovereign
+        agents never reach this code path.
+
+        Returns a list of (neighbor_id, position, velocity, envelope_radius).
+        """
+        me = self._agents.get(agent_id)
+        if me is None:
+            return []
+        mx, my = me.position
+        result = []
+        for other_id, other in self._agents.items():
+            if other_id == agent_id:
+                continue
+            ox, oy = other.position
+            d = ((ox - mx) ** 2 + (oy - my) ** 2) ** 0.5
+            if d <= radius:
+                result.append(
+                    (other_id, (ox, oy), other.velocity,
+                     other._config.envelope_radius)
+                )
+        return result
 
     def remove_agent(self, agent_id: str) -> None:
         """Remove an agent."""
@@ -255,9 +318,20 @@ class SimulationEngine:
         # =============================================================
         # Phase 4 — CONVERGE (Harmonic Resolution)
         # =============================================================
-        fields = self._buffer.get_fields_for_convergence()
-        convergence_result = self._gamma.converge(fields, self._cycle)
-        shared_mvr = convergence_result.shared_mvr
+        if self._omni_v2 is not None:
+            # OmniscientCoordinator v2 path: bypass the sovereign buffer.
+            # Build lossless ground-truth states from engine-internal data
+            # and compose them through the SAME GammaOperator. The ONLY
+            # difference between syncference and omniscient_v2 is input
+            # fidelity, not composition logic.
+            gt_states = self._build_ground_truth_states()
+            convergence_result = self._omni_v2.coordinate(gt_states, self._cycle)
+            shared_mvr = convergence_result.shared_mvr
+            fields = self._omni_v2.last_fields()
+        else:
+            fields = self._buffer.get_fields_for_convergence()
+            convergence_result = self._gamma.converge(fields, self._cycle)
+            shared_mvr = convergence_result.shared_mvr
 
         # Compute Harmony Index
         harmony = compute_harmony_index(fields, self._cycle)
@@ -391,6 +465,27 @@ class SimulationEngine:
                         details=action.details,
                     )
 
+        # Paper 1 v4 instrumentation: pair-wise collisions + mean speed.
+        # Computed AFTER physical enforcement so the counts reflect what
+        # actually happened, not what agents proposed.
+        collisions_this_cycle = 0
+        speeds: list[float] = []
+        agents_snapshot = list(self._agents.values())
+        for i in range(len(agents_snapshot)):
+            vi = agents_snapshot[i].velocity
+            speeds.append((vi[0] * vi[0] + vi[1] * vi[1]) ** 0.5)
+            ax, ay = agents_snapshot[i].position
+            min_sep_i = agents_snapshot[i]._config.min_separation
+            for j in range(i + 1, len(agents_snapshot)):
+                bx, by = agents_snapshot[j].position
+                min_sep_j = agents_snapshot[j]._config.min_separation
+                threshold = min(min_sep_i, min_sep_j) / 2.0
+                dx = ax - bx
+                dy = ay - by
+                if (dx * dx + dy * dy) ** 0.5 < threshold:
+                    collisions_this_cycle += 1
+        mean_speed = sum(speeds) / len(speeds) if speeds else 0.0
+
         # Build result
         # SOVEREIGNTY: trust scores are anonymized (keyed by index, not agent_id)
         result = CycleResult(
@@ -402,6 +497,8 @@ class SimulationEngine:
             void_snapshot=void_snap,
             shared_mvr=shared_mvr,
             trust_scores=self._argus.get_anonymized_scores(),
+            collisions=collisions_this_cycle,
+            mean_agent_speed=mean_speed,
         )
         self._history.append(result)
         # Bound history to prevent memory leak in long-running sessions.
@@ -431,6 +528,8 @@ class SimulationEngine:
             "boundary": self._config.boundary,
             "cycle": self._cycle,
             "nearby_obstacles": [],
+            "risk_zones": list(self._config.risk_zones),
+            "sensing_radius": self._config.sensing_radius,
         }
 
     def _push_omniscient_info(self) -> None:
@@ -457,6 +556,88 @@ class SimulationEngine:
             if hasattr(agent, "_set_omniscient_info"):
                 # Only agents that explicitly opt in receive this
                 agent._set_omniscient_info(snapshot)
+
+    def _build_ground_truth_states(self) -> dict[str, AgentGroundTruth]:
+        """
+        Build per-agent ground-truth state for OmniscientCoordinatorV2.
+
+        This is a backdoor analogous to _push_omniscient_info() but far
+        richer: it exposes the exact state that a perfectly-informed
+        observer would have. NEVER reachable from sovereign agents — only
+        the engine constructs it, and only for the omniscient_v2 path.
+
+        Risk field heuristic: for each agent, populate the cells around
+        OTHER agents' positions with a risk proportional to how close that
+        neighbor is relative to min_separation. This is still "lossless"
+        because the engine knows exactly where every agent is; the field
+        is deterministic given agent positions.
+        """
+        states: dict[str, AgentGroundTruth] = {}
+        now = time.time()
+        agents_list = list(self._agents.items())
+
+        for agent_id, agent in agents_list:
+            # Planned intent: prefer explicit _desired_* attrs, fall back to
+            # current velocity. ReferenceSyncferenceAgent sets these in infer().
+            planned_dir = getattr(agent, "_desired_direction", None)
+            planned_spd = getattr(agent, "_desired_speed", None)
+            if planned_dir is None or planned_spd is None:
+                vx, vy = agent.velocity
+                spd = (vx * vx + vy * vy) ** 0.5
+                if spd > 1e-6:
+                    planned_dir = (vx / spd, vy / spd)
+                    planned_spd = spd
+                else:
+                    planned_dir = (1.0, 0.0)
+                    planned_spd = 0.0
+            action_type = "move" if (planned_spd or 0.0) > 0.01 else "stop"
+
+            # Risk field: high-risk cells are those occupied by OTHER agents
+            # when their distance to this agent is < 2 × min_separation.
+            risk_field: dict[str, float] = {}
+            ax, ay = agent.position
+            min_sep = agent._config.min_separation
+            for other_id, other in agents_list:
+                if other_id == agent_id:
+                    continue
+                ox, oy = other.position
+                d = ((ox - ax) ** 2 + (oy - ay) ** 2) ** 0.5
+                if d < 2.0 * min_sep:
+                    cell = f"{int(ox)}_{int(oy)}"
+                    risk = max(0.0, min(1.0, 1.0 - d / (2.0 * min_sep)))
+                    # Keep the max per cell (conservative)
+                    if risk > risk_field.get(cell, 0.0):
+                        risk_field[cell] = risk
+
+            # Omniscient sees configured risk zones in full — no radius filter.
+            # This is the information asymmetry that makes SBE non-vacuous:
+            # Syncference agents sense zones only within sensing_radius in
+            # their own infer(), while the omniscient coordinator composes
+            # over the complete zone.
+            for zone in self._config.risk_zones:
+                zc_x, zc_y = zone["center"]
+                hs = zone["half_size"]
+                val = zone["value"]
+                for ix in range(int(zc_x - hs), int(zc_x + hs) + 1):
+                    for iy in range(int(zc_y - hs), int(zc_y + hs) + 1):
+                        cell = f"{ix}_{iy}"
+                        if val > risk_field.get(cell, 0.0):
+                            risk_field[cell] = val
+
+            states[agent_id] = AgentGroundTruth(
+                position=tuple(agent.position),
+                velocity=tuple(agent.velocity),
+                radius=agent._config.envelope_radius,
+                global_time=now,
+                planned_direction=tuple(planned_dir),
+                planned_speed=float(planned_spd),
+                action_type=action_type,
+                true_max_speed=agent._config.max_speed,
+                true_min_separation=agent._config.min_separation,
+                true_risk_field=risk_field,
+                true_restricted_zones=[],
+            )
+        return states
 
     def _apply_deference(self, shared_mvr: dict, action) -> dict:
         """

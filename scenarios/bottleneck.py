@@ -34,6 +34,7 @@ from agents.base_agent import BaseAgent, AgentConfig
 from agents.reference_syncference import ReferenceSyncferenceAgent
 from agents.reference_random import ReferenceRandomAgent
 from agents.reference_greedy import ReferenceGreedyAgent
+from agents.orca import ORCAAgent
 from engine.simulation import SimulationEngine, SimulationConfig
 from roch3.void_index import VoidConfig
 
@@ -92,9 +93,12 @@ def create_bottleneck_agents(
     - Agent 3: left side, slightly offset, heading right
 
     agent_types:
-      "syncference" — all 3 are Syncference (ideal coordination)
-      "mixed"       — 1 Syncference + 1 Greedy + 1 Random
-      "greedy"      — all 3 are Greedy (worst case)
+      "syncference"   — all 3 are Syncference (ideal coordination)
+      "mixed"         — 1 Syncference + 1 Greedy + 1 Random
+      "greedy"        — all 3 are Greedy (worst case)
+      "orca"          — all 3 are ORCA (homogeneous baseline w/ ground truth)
+      "omniscient_v2" — 3 Syncference agents driven by OmniscientCoordinatorV2
+                        (coordinator selected via SimulationConfig, not here)
     """
     cfg = bottleneck_cfg
     cy = cfg.corridor_y_center
@@ -190,6 +194,69 @@ def create_bottleneck_agents(
                 goal=(45.0, cy),
             ),
         ]
+    elif agent_types == "orca":
+        agents = [
+            ORCAAgent(
+                AgentConfig(
+                    agent_id="orca_left_1",
+                    start_position=(5.0, cy),
+                    max_speed=cfg.max_speed,
+                    min_separation=cfg.min_separation,
+                ),
+                goal=(45.0, cy),
+            ),
+            ORCAAgent(
+                AgentConfig(
+                    agent_id="orca_right_1",
+                    start_position=(45.0, cy),
+                    max_speed=cfg.max_speed,
+                    min_separation=cfg.min_separation,
+                ),
+                goal=(5.0, cy),
+            ),
+            ORCAAgent(
+                AgentConfig(
+                    agent_id="orca_left_2",
+                    start_position=(5.0, cy + 4.0),
+                    max_speed=cfg.max_speed,
+                    min_separation=cfg.min_separation,
+                ),
+                goal=(45.0, cy),
+            ),
+        ]
+    elif agent_types == "omniscient_v2":
+        # Agents are plain Syncference; the engine replaces Γ with
+        # OmniscientCoordinatorV2 when SimulationConfig.coordinator_override
+        # is set to "omniscient_v2".
+        agents = [
+            ReferenceSyncferenceAgent(
+                AgentConfig(
+                    agent_id="omni2_left_1",
+                    start_position=(5.0, cy),
+                    max_speed=cfg.max_speed,
+                    min_separation=cfg.min_separation,
+                ),
+                goal=(45.0, cy),
+            ),
+            ReferenceSyncferenceAgent(
+                AgentConfig(
+                    agent_id="omni2_right_1",
+                    start_position=(45.0, cy),
+                    max_speed=cfg.max_speed,
+                    min_separation=cfg.min_separation,
+                ),
+                goal=(5.0, cy),
+            ),
+            ReferenceSyncferenceAgent(
+                AgentConfig(
+                    agent_id="omni2_left_2",
+                    start_position=(5.0, cy + 4.0),
+                    max_speed=cfg.max_speed,
+                    min_separation=cfg.min_separation,
+                ),
+                goal=(45.0, cy),
+            ),
+        ]
     else:
         raise ValueError(f"Unknown agent_types: {agent_types}")
 
@@ -223,6 +290,9 @@ def create_bottleneck_simulation(
         ),
         db_path=db_path,
         jitter_seed=jitter_seed,
+        coordinator_override=(
+            "omniscient_v2" if agent_types == "omniscient_v2" else None
+        ),
     )
 
     engine = SimulationEngine(sim_config)
