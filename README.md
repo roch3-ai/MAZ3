@@ -1,19 +1,54 @@
-# MAZ3 — Empirical Benchmark for ROCH3 Patent Validation
+# MAZ3 — Empirical Benchmark for Sovereign Multi-Agent Coordination
 
-**Status:** Complete (Pasos 0–5, post-audit fixes Round 1)
-**Tests:** 51 passing across 9 suites
-**Version:** 1.0.0
-**Deadline:** May 15, 2026
+**Status:** Research benchmark, Apache 2.0
+**Tests:** 55 passing across 9 suites
+**Version:** 1.0.0 (Paper 1 v4.2)
 
 ## What is MAZ3?
 
-Public benchmark that empirically validates P3 (Kinetic Deference, 55 claims) and P4 (REPUBLIK OS, 75 claims) — 130 patent claims filed with the USPTO by ROCH3.
+Public benchmark for sovereign multi-agent coordination under adversarial and
+degraded-network conditions. MAZ3 is the first public benchmark to combine:
 
-MAZ3 is the first benchmark to provide:
-- Sub-millisecond convergence for n<50 agents
+- Sub-millisecond algorithmic convergence for n<50 agents
 - Adversarial detection latency under 0.01ms
-- Structural sovereignty guarantee (verified by 5 tests)
-- Physical enforcement of D3/D4 deference levels (verified against malicious agents)
+- Architectural sovereignty (no identity leaks across the coordination substrate)
+- Physical enforcement of D3/D4 deference levels against malicious agents
+
+Includes pending US provisional patent applications (P3, P4); see the
+[Patent Disclosure](#patent-disclosure) section below.
+
+## Reproducing Paper 1 v4.2 Results
+
+Paper 1 v4.2 is pre-registered on OSF:
+[**osf.io/kjcwg**](https://osf.io/kjcwg) — DOI:
+[10.17605/OSF.IO/KJCWG](https://doi.org/10.17605/OSF.IO/KJCWG).
+
+All aggregated tables and per-cell data from the N=500 benchmark are in
+[`results/paper1_v4_benchmark_N500.md`](results/paper1_v4_benchmark_N500.md)
+and [`results/paper1_v4_benchmark_N500.json`](results/paper1_v4_benchmark_N500.json).
+
+**Local reproduction (single machine):**
+
+```bash
+pip install -r requirements.txt
+python -m benchmarks.paper1_v4_benchmark --n 500 --seed-base 42
+```
+
+Results land in `results/paper1_v4_benchmark_N500.{json,md}`.
+
+**Azure reproduction (25 parallel container instances, ~40 min wall clock):**
+
+```bash
+# Requires: az CLI logged in, a resource group, an ACR, and a storage account.
+# Defaults assume the ROCH3 infrastructure (see scripts/run_azure_n500.py).
+python scripts/run_azure_n500.py --n 500 --seed-base 42
+```
+
+Output is byte-identical to the local run (deterministic seeds +
+`numpy==2.4.4` pinned in the Dockerfile).
+
+For the cost-of-sovereignty analysis (Asymmetric_risk scenario) and the
+network-dependent behavior in Bottleneck, see Paper 1 v4.2.
 
 ## Quick Start
 
@@ -48,33 +83,27 @@ python api/server.py
 ## Requirements
 
 - Python 3.10+
-- numpy ≥ 1.24
+- numpy == 2.4.4 (pinned for reproducibility)
 - fastapi ≥ 0.100, uvicorn ≥ 0.23 (for API server only)
 
-## Key Results
+## Formal properties (validated empirically)
 
-**Coordination quality (3×3 benchmark, Bottleneck scenario):**
-
-| Agents | Network | avg H_p | min H_p |
-|--------|---------|---------|---------|
-| Syncference | ideal | 0.975 | 0.944 |
-| Mixed | ideal | 0.964 | 0.329 |
-| Greedy | ideal | 0.929 | 0.343 |
-
-**Formal properties (validated empirically):**
-
-| Property | Result | Patent Claim |
-|----------|--------|--------------|
-| Bounded convergence (n=50) | <0.1ms | P4 Theorem 1 |
-| Graceful degradation (ideal→wifi) | 1.0% relative | P4 Theorem 3 |
-| Monotonic safety | Verified | P4 Theorem 2 |
-| Determinism | 50/50 identical runs | Safety-critical req |
-| Adversarial detection latency | <0.01ms | P3 detection claims |
-| Trust degradation (1.0→0.0) | ~10 cycles | P3 ARGUS |
-| D3/D4 physical enforcement | Verified vs malicious | P3 enforcement claim |
-| Sovereignty (no agent_id leaks) | Verified architecturally | P3/P4 sovereignty |
+| Property | Result |
+|----------|--------|
+| Bounded convergence (n=50) | <0.1ms |
+| Graceful degradation (ideal→wifi) | 1.0% relative |
+| Monotonic safety | Verified |
+| Determinism | 500/500 identical runs (pinned seeds) |
+| Adversarial detection latency | <0.01ms |
+| Trust degradation (1.0→0.0) | ~10 cycles |
+| D3/D4 physical enforcement | Verified vs malicious |
+| Sovereignty (no agent_id leaks) | Verified architecturally |
 
 **Axiom Seal Lite:** PASS (5/5 criteria met)
+
+Per-scenario H_p and collision tables are in
+[`results/paper1_v4_benchmark_N500.md`](results/paper1_v4_benchmark_N500.md).
+See Paper 1 v4.2 for the cost-of-sovereignty analysis.
 
 ## Citing MAZ3
 
@@ -89,22 +118,27 @@ python api/server.py
 }
 ```
 
-When citing, please include the version number. Benchmark numbers are not comparable across major versions.
+When citing, please include the version number. Benchmark numbers are not
+comparable across major versions.
 
-## Patent References
+## Patent Disclosure
+
+Includes pending US provisional patent applications:
 
 - P3: Application 64/029,056 (Kinetic Deference, 55 claims)
 - P4: Application 64/030,395 (REPUBLIK OS, 75 claims)
 - Inventor: Gustavo Emmanuel Briones Jara
 - Filed under USPTO Micro Entity status
 
-Total ROCH3 portfolio: ~194 claims across 4 provisional applications.
+Total ROCH3 portfolio: ~194 pending claims across 4 provisional applications.
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE). The patent grant in Section 3 protects implementers; the patent retaliation clause protects ROCH3's claims.
+Apache License 2.0 — see [LICENSE](LICENSE). The patent grant in Section 3
+protects implementers; the patent retaliation clause protects ROCH3's pending
+claims.
 
 ---
 
+*ROCH3 — Tepic, Nayarit, México*
 *ROCH3 — The TCP/IP of the Physical World*
-*Tepic, Nayarit, México*
