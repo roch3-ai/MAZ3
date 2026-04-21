@@ -127,8 +127,6 @@ Includes pending US provisional patent applications:
 
 - P3: Application 64/029,056 (Kinetic Deference, 55 claims)
 - P4: Application 64/030,395 (REPUBLIK OS, 75 claims)
-- Inventor: Gustavo Emmanuel Briones Jara
-- Filed under USPTO Micro Entity status
 
 Total ROCH3 portfolio: ~194 pending claims across 4 provisional applications.
 
@@ -140,5 +138,4 @@ claims.
 
 ---
 
-*ROCH3 — Tepic, Nayarit, México*
 *ROCH3 — The TCP/IP of the Physical World*
