@@ -109,7 +109,7 @@ See Paper 1 v4.2 for the cost-of-sovereignty analysis.
 
 ```bibtex
 @misc{maz3_2026,
-  author = {Briones Jara, Gustavo Emmanuel},
+  author = {Adon Roche},
   title  = {MAZ3: Empirical Benchmark for Sovereign Multi-Agent Coordination},
   year   = {2026},
   version = {1.0.0},
