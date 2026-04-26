@@ -1,7 +1,7 @@
 """
 Database Models — Flight Recorder Schema
 
-SQLite-first for Paso 0-3, Postgres migration at Paso 4 (Hetzner deploy).
+SQLite-first for benchmark. PostgreSQL migration at production deploy.
 Schema is compatible with both — key differences handled:
   - gen_random_uuid() → Python uuid4
   - TIMESTAMPTZ → TEXT (ISO format)

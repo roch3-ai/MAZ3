@@ -44,7 +44,7 @@ class HarmonyResult:
     h_p: float
     components: HarmonyComponents
     p: int
-    status: str  # "healthy" | "attention" | "critical"
+    status: str  # "healthy" | "attention" | "intervene"
     cycle: int
 
 

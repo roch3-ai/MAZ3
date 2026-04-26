@@ -14,14 +14,7 @@ import tempfile
 from dataclasses import dataclass
 
 from scenarios.bottleneck import create_bottleneck_simulation
-from scenarios.asymmetric_risk import create_asymmetric_risk_simulation
 from roch3.kinetic_safety import DeferenceLevel
-
-
-SCENARIO_FACTORIES = {
-    "bottleneck": create_bottleneck_simulation,
-    "asymmetric_risk": create_asymmetric_risk_simulation,
-}
 
 
 @dataclass
@@ -42,22 +35,6 @@ class SessionResult:
     deference_d3_plus: int
     total_detections: int
     void_fraction_final: float
-    # Paper 1 v4 metrics (added as fields so the dataclass exposes them
-    # uniformly; callers can also use the name-compat properties below).
-    collisions_per_cycle: float = 0.0
-    task_completion_fraction: float = 0.0
-    deadlocked: bool = False
-    tail_mean_agent_speed: float = 0.0
-
-    # --- Name-compat properties (Paper 1 v4 benchmark expects these names) --
-
-    @property
-    def hp_mean(self) -> float:
-        return self.avg_h_p
-
-    @property
-    def mean_algorithmic_convergence_ms(self) -> float:
-        return self.avg_convergence_ms
 
     def to_row(self) -> dict:
         return {
@@ -78,24 +55,14 @@ def run_session(
     network_profile: str,
     max_cycles: int = 200,
     jitter_seed: int = 42,
-    *,
-    scenario: str = "bottleneck",
 ) -> SessionResult:
     """Run a single benchmark session and return aggregated results."""
-
-    try:
-        factory = SCENARIO_FACTORIES[scenario]
-    except KeyError:
-        raise ValueError(
-            f"Unknown scenario {scenario!r}. "
-            f"Known: {sorted(SCENARIO_FACTORIES.keys())}"
-        )
 
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
 
     try:
-        engine, bcfg = factory(
+        engine, bcfg = create_bottleneck_simulation(
             agent_types=agent_types,
             network_profile=network_profile,
             max_cycles=max_cycles,
@@ -127,51 +94,17 @@ def run_session(
         # Final void fraction
         void_frac = results[-1].void_snapshot["void_fraction"] if results else 0.0
 
-        # Paper 1 v4 metrics
-        collisions_per_cycle = (
-            sum(r.collisions for r in results) / len(results) if results else 0.0
-        )
-
-        # Task completion: fraction of goal-bearing agents within 1m of goal.
-        # Agents without a `_goal` attribute (Random, adversarial) are ignored.
-        reached = 0
-        total_with_goal = 0
-        for agent in engine._agents.values():
-            goal = getattr(agent, "_goal", None)
-            if goal is None:
-                continue
-            total_with_goal += 1
-            gx, gy = goal
-            ax, ay = agent.position
-            if ((ax - gx) ** 2 + (ay - gy) ** 2) ** 0.5 < 1.0:
-                reached += 1
-        task_completion_fraction = (
-            reached / total_with_goal if total_with_goal else 0.0
-        )
-
-        # Deadlock: tail-window mean agent speed < 0.05 and completion < 1.0
-        tail_window = min(50, len(results))
-        if tail_window > 0:
-            tail_mean_agent_speed = (
-                sum(r.mean_agent_speed for r in results[-tail_window:]) / tail_window
-            )
-        else:
-            tail_mean_agent_speed = 0.0
-        deadlocked = (
-            task_completion_fraction < 1.0 and tail_mean_agent_speed < 0.05
-        )
-
+        # Guard against empty results
+        # (max_cycles=0, early abort, or adversarial-induced crash)
         return SessionResult(
-            scenario=scenario,
+            scenario="bottleneck",
             agent_types=agent_types,
             network_profile=network_profile,
             cycles_run=len(results),
             avg_h_p=sum(h_values) / len(h_values) if h_values else 0.0,
             min_h_p=min(h_values) if h_values else 0.0,
             max_h_p=max(h_values) if h_values else 0.0,
-            avg_convergence_ms=(
-                sum(conv_times) / len(conv_times) if conv_times else 0.0
-            ),
+            avg_convergence_ms=sum(conv_times) / len(conv_times) if conv_times else 0.0,
             max_convergence_ms=max(conv_times) if conv_times else 0.0,
             deference_d0=d_counts[0],
             deference_d1=d_counts[1],
@@ -179,10 +112,6 @@ def run_session(
             deference_d3_plus=d_counts[3],
             total_detections=total_detections,
             void_fraction_final=void_frac,
-            collisions_per_cycle=collisions_per_cycle,
-            task_completion_fraction=task_completion_fraction,
-            deadlocked=deadlocked,
-            tail_mean_agent_speed=tail_mean_agent_speed,
         )
     finally:
         os.unlink(db_path)

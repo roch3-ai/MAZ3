@@ -1,7 +1,7 @@
 """
 test_paso1_simulation.py
 
-Paso 1 criterion of done:
+Simulation engine criterion of done:
   "Un agente se conecta, proyecta MVR, el operador Γ converge,
    el flight recorder guarda el snapshot."
 

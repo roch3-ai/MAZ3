@@ -1,3 +1,4 @@
-numpy==2.4.4
-fastapi>=0.100.0
-uvicorn>=0.23.0
+# AUDIT ROUND 4: Pinned for benchmark reproducibility
+numpy==1.26.4
+fastapi==0.115.0
+uvicorn==0.30.1

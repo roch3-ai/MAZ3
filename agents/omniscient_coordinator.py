@@ -55,6 +55,7 @@ class OmniscientCoordinator(BaseAgent):
         self._local_risks: dict[str, float] = {}
         # Omniscient: knows all other agents
         self._all_agents: list[dict] = []
+        self._own_index: int | None = None  # Set by engine via _set_omniscient_info
 
     def sense(self, environment: dict) -> None:
         if "boundary" in environment:
@@ -62,7 +63,7 @@ class OmniscientCoordinator(BaseAgent):
         # NOTE: omniscient info no longer comes from environment.
         # The engine pushes it via _set_omniscient_info() backdoor.
 
-    def _set_omniscient_info(self, all_agents_info: list[dict]) -> None:
+    def _set_omniscient_info(self, all_agents_info: list[dict], own_index: int = None) -> None:
         """
         Backdoor channel — only the engine calls this.
 
@@ -70,8 +71,12 @@ class OmniscientCoordinator(BaseAgent):
         _push_omniscient_info() never reaches them. This is the
         structural enforcement that omniscient access is reserved
         for the internal reference coordinator.
+
+        Receives own_index from engine for deterministic self-exclusion.
+
         """
         self._all_agents = all_agents_info
+        self._own_index = own_index
 
     def infer(self) -> None:
         px, py = self._state.position
@@ -94,11 +99,12 @@ class OmniscientCoordinator(BaseAgent):
         min_dist = float("inf")
 
         for other in self._all_agents:
-            # AUDIT ROUND 2 FIX C1: No agent_id in snapshot anymore.
-            # Self-exclude by position match instead.
-            ox, oy = other.get("position", (0, 0))
-            if (abs(ox - px) < 0.001 and abs(oy - py) < 0.001):
+            # Self-exclude by buffer index (deterministic, collision-safe).
+
+
+            if self._own_index is not None and other.get("index") == self._own_index:
                 continue
+            ox, oy = other.get("position", (0, 0))
             rx = px - ox
             ry = py - oy
             r_dist = math.sqrt(rx * rx + ry * ry)

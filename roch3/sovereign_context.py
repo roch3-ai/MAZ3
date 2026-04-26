@@ -164,10 +164,17 @@ class ARGUSTrustChannel:
         self._initial_trust: float = 1.0
         self._decay_rate: float = 0.05  # per suspicious observation
         self._recovery_rate: float = 0.01  # per clean observation
-        # AUDIT ROUND 2 FIX C6: Anti-reidentification via index rotation
+        # Anti-reidentification: rotate published indices periodically
         self._ROTATION_INTERVAL: int = 10  # Rotate indices every N calls
         self._rotation_counter: int = 0
-        self._current_permutation: list[int] | None = None
+        self._current_permutation: dict[int, int] | None = None
+        # Dedicated seeded RNG for deterministic index rotation
+        # for reproducible rotation. Global random.shuffle() broke determinism.
+        import random as _rng_module
+        self._rotation_rng = _rng_module.Random(42)
+        # Penalty floor: adversarial detections permanently lower recovery ceiling
+        # Each adversarial detection permanently lowers the ceiling
+        self._penalty_floor: dict[str, float] = {}
 
     def update_trust(self, agent_id: str, observation: dict) -> float:
         """
@@ -190,12 +197,17 @@ class ARGUSTrustChannel:
             obs_type = observation.get("type", "unknown")
 
             if obs_type == "consistent":
-                # Slow recovery — trust is hard to rebuild
-                current = min(1.0, current + self._recovery_rate)
+                # Recovery capped by penalty floor — each attack leaves a permanent scar.
+                # Each adversarial detection permanently scars the trust ceiling.
+                floor = self._penalty_floor.get(agent_id, 1.0)
+                current = min(floor, current + self._recovery_rate)
             elif obs_type in ("spatial_inflation", "under_reporting_risk",
                               "clock_drift_excessive", "projection_poisoning"):
                 severity = observation.get("severity", 1.0)
                 current = max(0.0, current - self._decay_rate * severity)
+                # Lower the recovery ceiling permanently
+                floor = self._penalty_floor.get(agent_id, 1.0)
+                self._penalty_floor[agent_id] = max(0.0, floor - 0.1 * severity)
             # Unknown types don't change trust — fail safe
 
             self._trust_scores[agent_id] = current
@@ -249,14 +261,11 @@ class ARGUSTrustChannel:
         be exposed via API responses. Returning agent_id-keyed scores
         leaks identity and violates the sovereignty guarantee.
 
-        AUDIT ROUND 2 FIX C6: Indices rotate every ROTATION_INTERVAL
+        Indices rotate every ROTATION_INTERVAL
         calls to prevent reidentification by temporal correlation.
-        The rotation makes it impossible for an observer to track
-        a specific agent's trust evolution across rotation boundaries.
-        No noise ε — preserves benchmark reproducibility.
+        No noise epsilon to preserve benchmark reproducibility.
         """
         with self._lock:
-            # Build raw index-keyed scores
             raw: dict[int, float] = {}
             for agent_id, score in self._trust_scores.items():
                 idx = self._buffer.get_index_for_agent(agent_id)
@@ -266,24 +275,21 @@ class ARGUSTrustChannel:
             if not raw:
                 return {}
 
-            # Rotate permutation periodically
-            n = max(raw.keys()) + 1 if raw else 0
+            # Rotate over present indices only (handles add/remove mid-session).
+            # Use seeded RNG for deterministic rotation.
+
+            present_indices = sorted(raw.keys())
             self._rotation_counter += 1
             if (self._current_permutation is None
-                    or len(self._current_permutation) < n
+                    or set(self._current_permutation.keys()) != set(present_indices)
                     or self._rotation_counter % self._ROTATION_INTERVAL == 0):
-                import random as _rng
-                perm = list(range(n))
-                _rng.shuffle(perm)
-                self._current_permutation = perm
+                shuffled = list(present_indices)
+                self._rotation_rng.shuffle(shuffled)
+                self._current_permutation = dict(zip(present_indices, shuffled))
 
-            # Apply permutation
             result: dict[int, float] = {}
             for idx, score in raw.items():
-                if idx < len(self._current_permutation):
-                    rotated = self._current_permutation[idx]
-                else:
-                    rotated = idx
+                rotated = self._current_permutation.get(idx, idx)
                 result[rotated] = score
             return result
 
@@ -297,3 +303,6 @@ class ARGUSTrustChannel:
         with self._lock:
             self._trust_scores.clear()
             self._history.clear()
+            self._penalty_floor.clear()
+            self._rotation_counter = 0
+            self._current_permutation = None

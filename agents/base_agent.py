@@ -192,8 +192,10 @@ class BaseAgent(ABC):
         vx, vy = velocity
         self._state.speed = (vx * vx + vy * vy) ** 0.5
 
-    def get_info(self) -> dict:
-        """Public info about this agent (for logging, not for other agents)."""
+    def _get_info(self) -> dict:
+        """Internal info about this agent (for logging, NEVER for API/other agents).
+        Internal only — never expose via API to prevent agent_id leakage.
+"""
         return {
             "agent_id": self._agent_id,
             "type": self.__class__.__name__,

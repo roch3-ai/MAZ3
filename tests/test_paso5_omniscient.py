@@ -1,7 +1,7 @@
 """
 test_paso5_omniscient.py
 
-Paso 5 criterion of done:
+OmniscientCoordinator validation criterion of done:
   "OmniscientCoordinator implementado. Comparación H_p(Omniscient) vs
    H_p(Syncference) con test estadístico. Axiom Seal Lite definido."
 
@@ -256,7 +256,7 @@ def test_omniscient_never_on_leaderboard():
     from agents.omniscient_coordinator import OmniscientCoordinator
 
     agent = OmniscientCoordinator(AgentConfig(agent_id="omni_test"))
-    info = agent.get_info()
+    info = agent._get_info()
 
     assert info["type"] == "OmniscientCoordinator"
     # The type name itself flags it as internal

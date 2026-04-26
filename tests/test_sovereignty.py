@@ -6,7 +6,7 @@ Si un investigador de seguridad audita el código, debe encontrar que es
 ESTRUCTURALMENTE IMPOSIBLE acceder a las proyecciones de un agente
 desde la perspectiva de otro.
 
-Este test DEBE pasar antes de cualquier lanzamiento.
+This test MUST pass before any release.
 """
 
 import sys

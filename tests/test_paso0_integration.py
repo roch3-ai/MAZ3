@@ -1,10 +1,10 @@
 """
 test_paso0_integration.py
 
-End-to-end test of all Paso 0 components:
+End-to-end integration test of core protocol components.
   MVR → SovereignProjectionBuffer → ARGUS → Γ → Harmony → VoidIndex → FlightRecorder
 
-If this passes, Paso 0 is complete and we can move to Paso 1.
+Validates MVR, convergence, harmony, safety, void, and network jitter.
 """
 
 import sys

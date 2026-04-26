@@ -1,7 +1,7 @@
 """
 test_paso3_adversarial.py
 
-Paso 3 criterion of done:
+Adversarial detection criterion of done:
   "Agente adversarial detectado. Detection latency medido. Void Index operacional."
 
 Tests:

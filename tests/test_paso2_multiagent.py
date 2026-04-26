@@ -1,7 +1,7 @@
 """
 test_paso2_multiagent.py
 
-Paso 2 criterion of done:
+Multi-agent coordination criterion of done:
   "3 agentes en Bottleneck con H_p calculándose. Datos en PostgreSQL."
 
 Tests:

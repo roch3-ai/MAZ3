@@ -10,5 +10,5 @@ Any paper citing MAZ3 must declare the version used. This is standard
 practice for serious benchmarks (ImageNet, GLUE, MLPerf).
 """
 
-__version__ = "1.0.0"
-__benchmark_version__ = "1.0.0"
+__version__ = "1.1.0"
+__benchmark_version__ = "1.1.0"

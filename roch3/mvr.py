@@ -114,8 +114,8 @@ class RiskGradient:
         return max(self.cell_risks.values()) if self.cell_risks else 0.0
 
     def to_dict(self) -> dict:
-        import copy
-        return {"cell_risks": copy.deepcopy(self.cell_risks)}
+        # Shallow copy is sufficient for {str: float} — no nested mutables
+        return {"cell_risks": dict(self.cell_risks)}
 
     @classmethod
     def from_dict(cls, d: dict) -> RiskGradient:
@@ -184,7 +184,7 @@ class MVRProjection:
         errors = []
         env = self.spatial_envelope
 
-        # AUDIT ROUND 2 FIX C3: Reject NaN/Inf in spatial_envelope
+        # Reject non-finite values in spatial envelope
         for field_name, value in [
             ("x_min", env.x_min), ("x_max", env.x_max),
             ("y_min", env.y_min), ("y_max", env.y_max),
@@ -205,7 +205,25 @@ class MVRProjection:
         if self.constraint_set.min_separation < 0:
             errors.append("constraint_set: negative min_separation")
 
-        # AUDIT ROUND 2 FIX C2: DOS defense — limit risk_gradient cells
+        # DOS defense: limit regulatory zones
+
+        MAX_REGULATORY_ZONES = 1_000
+        if len(self.constraint_set.regulatory_zones) > MAX_REGULATORY_ZONES:
+            errors.append(
+                f"constraint_set: {len(self.constraint_set.regulatory_zones)} "
+                f"regulatory_zones exceeds maximum {MAX_REGULATORY_ZONES}"
+            )
+
+        # Cap drift bound to prevent temporal divergence manipulation
+        # An agent declaring drift_bound_ms=1e15 collapses D_temporal to 0
+        MAX_DRIFT_BOUND_MS = 10_000  # 10 seconds is generous
+        if self.temporal_sync.drift_bound_ms > MAX_DRIFT_BOUND_MS:
+            errors.append(
+                f"temporal_sync: drift_bound_ms {self.temporal_sync.drift_bound_ms} "
+                f"exceeds maximum {MAX_DRIFT_BOUND_MS}"
+            )
+
+        # DOS defense: limit risk gradient cells
         MAX_RISK_CELLS = 10_000
         if len(self.risk_gradient.cell_risks) > MAX_RISK_CELLS:
             errors.append(
@@ -214,7 +232,9 @@ class MVRProjection:
             )
 
         for cell_id, risk in self.risk_gradient.cell_risks.items():
-            if not (0.0 <= risk <= 1.0):
-                errors.append(f"risk_gradient: cell {cell_id} risk {risk} out of [0,1]")
+            # Reject non-finite or out-of-range risk values
+
+            if not math.isfinite(risk) or not (0.0 <= risk <= 1.0):
+                errors.append(f"risk_gradient: cell {cell_id} risk {risk} invalid (must be finite and in [0,1])")
                 break  # don't spam
         return errors

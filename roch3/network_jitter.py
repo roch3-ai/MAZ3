@@ -7,7 +7,7 @@ Profiles map to ODIN operational modes:
   - wifi_warehouse: conventional autonomous systems
   - lora_mesh: SparkNet degraded / mesh fallback
 
-CRITICAL BUG FIX (from handoff):
+Implementation note:
   Lognormal sigma must be: sqrt(ln(1 + (std/mean)²))
   NOT the naive: std/mean
 

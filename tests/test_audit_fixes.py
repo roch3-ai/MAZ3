@@ -1,9 +1,9 @@
 """
-test_audit_fixes.py — Tests for the post-audit fixes (Round 1).
+test_audit_fixes.py — Tests for sovereignty and safety invariants.
 
-Two new tests required by the audit handoff:
-  1. API responses contain NO agent_ids in trust_scores (Fix #2 verification)
-  2. Malicious agent CANNOT move during D3 (Fix #3 verification)
+Validates:
+  1. API responses contain NO agent_ids in trust_scores
+  2. Malicious agent CANNOT move during D3
 """
 
 import sys
@@ -290,16 +290,6 @@ def test_d3_physical_enforcement():
     print("✓ test_d3_physical_enforcement PASSED\n")
 
 
-if __name__ == "__main__":
-    test_trust_scores_anonymized()
-    test_d3_physical_enforcement()
-    test_omniscient_no_agent_ids()
-    test_validate_rejects_nan_inf()
-    test_validate_rejects_oversized_risk_gradient()
-    test_anonymized_scores_rotate_indices()
-    print("=" * 55)
-    print("=== ALL AUDIT FIX TESTS PASSED ===")
-    print("=" * 55)
 
 
 # =====================================================================
@@ -308,9 +298,9 @@ if __name__ == "__main__":
 
 def test_omniscient_no_agent_ids():
     """
-    Round 2 Fix C1: _push_omniscient_info must use anonymous indices,
+    Verify _push_omniscient_info uses anonymous indices,
     never real agent_ids. The OmniscientCoordinator should function
-    correctly with indices instead of identities.
+    correctly with anonymous indices.
     """
     print("--- Omniscient Snapshot Contains No Agent IDs ---")
 
@@ -398,7 +388,7 @@ def test_omniscient_no_agent_ids():
 
 def test_validate_rejects_nan_inf():
     """
-    Round 2 Fix C3: validate() must reject NaN and Inf in spatial_envelope.
+    Validate must reject NaN and Inf in spatial_envelope.
     """
     print("--- Validate Rejects NaN/Inf ---")
     import math
@@ -429,8 +419,8 @@ def test_validate_rejects_nan_inf():
 
 def test_validate_rejects_oversized_risk_gradient():
     """
-    Round 2 Fix C2: validate() must reject risk_gradient with >10,000 cells.
-    DOS defense.
+    Validate must reject risk_gradient with >10,000 cells (DOS defense).
+
     """
     print("--- Validate Rejects Oversized Risk Gradient ---")
 
@@ -467,8 +457,8 @@ def test_validate_rejects_oversized_risk_gradient():
 
 def test_anonymized_scores_rotate_indices():
     """
-    Round 2 Fix C6: get_anonymized_scores() must rotate indices
-    periodically to prevent reidentification by temporal correlation.
+    Verify get_anonymized_scores() rotates indices
+    periodically to prevent reidentification.
     """
     print("--- Anonymized Scores Rotate Indices ---")
     from roch3.sovereign_context import SovereignProjectionBuffer, ARGUSTrustChannel
@@ -536,3 +526,20 @@ def test_anonymized_scores_rotate_indices():
     print(f"  All scores in [0, 1] ✓")
 
     print("✓ test_anonymized_scores_rotate_indices PASSED\n")
+
+
+# =====================================================================
+# MAIN — must be at the END of the file (after all function definitions)
+
+# =====================================================================
+
+if __name__ == "__main__":
+    test_trust_scores_anonymized()
+    test_d3_physical_enforcement()
+    test_omniscient_no_agent_ids()
+    test_validate_rejects_nan_inf()
+    test_validate_rejects_oversized_risk_gradient()
+    test_anonymized_scores_rotate_indices()
+    print("=" * 55)
+    print("=== ALL AUDIT FIX TESTS PASSED ===")
+    print("=" * 55)

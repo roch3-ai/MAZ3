@@ -88,9 +88,8 @@ class BenchmarkMatrixRequest(BaseModel):
 class HealthResponse(BaseModel):
     status: str = "ok"
     benchmark_version: str = "1.0.0"
-    # AUDIT ROUND 2 FIX C9: Removed hardcoded tests_passing and patent_claims.
-    # These values go stale with each audit round. Patent info lives in
-    # docs/PRIOR_ART.md and README.md, not in the health endpoint.
+    # Patent info lives in docs/PRIOR_ART.md, not in the health endpoint.
+
 
 
 # =============================================================================

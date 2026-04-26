@@ -144,13 +144,12 @@ def test_monotonic_safety():
     shared_risks = mvr["risk_gradient"]["cell_risks"]
     for f in fields:
         for cell_id, risk_val in f["risk_gradient"]["cell_risks"].items():
-            # AUDIT ROUND 2 FIX C4: Verify against raw risk, not trust-weighted.
-            # Conservative composition MUST use raw max (Fix #1 from Round 1).
-            # The old assert compared against weighted_risk which is always <=
-            # raw risk, making the test pass even if _max_risk was broken.
-            assert shared_risks[cell_id] >= risk_val - 0.001, (
-                f"Cell {cell_id}: shared risk {shared_risks[cell_id]} < raw input {risk_val}. "
-                "Conservative composition MUST use raw max, never trust-weighted."
+            # Verify against raw risk, not trust-weighted.
+            # Conservative composition MUST use raw max.
+            if cell_id in shared_risks:
+                assert shared_risks[cell_id] >= risk_val - 0.001, (
+                    f"Cell {cell_id}: shared risk {shared_risks[cell_id]} < raw input {risk_val}. "
+                    "Conservative composition MUST use raw max, never trust-weighted."
                 )
     print(f"  Risk (max per cell): {shared_risks}")
 

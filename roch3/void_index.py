@@ -110,6 +110,9 @@ class VoidIndex:
 
         # Track void volume for collapse detection
         self._void_volume_history.append(self.total_void_volume())
+        # Bound history to prevent unbounded memory growth
+        if len(self._void_volume_history) > 1000:
+            self._void_volume_history = self._void_volume_history[-500:]
 
     def nearest_void(self, position: tuple[float, float]) -> Optional[tuple[float, float]]:
         """
