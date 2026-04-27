@@ -153,7 +153,11 @@ class ARGUSTrustChannel:
     Patent ref: P4 Claims 6-10 (ARGUS identity and security)
     """
 
-    def __init__(self, buffer: SovereignProjectionBuffer) -> None:
+    def __init__(
+        self,
+        buffer: SovereignProjectionBuffer,
+        trust_floor: float = 0.0,
+    ) -> None:
         self._lock = threading.Lock()
         self._buffer = buffer
         # {agent_id: trust_score} — raw scores
@@ -164,6 +168,11 @@ class ARGUSTrustChannel:
         self._initial_trust: float = 1.0
         self._decay_rate: float = 0.05  # per suspicious observation
         self._recovery_rate: float = 0.01  # per clean observation
+        # τ_floor: minimum trust score (Brecha A).
+        # Default 0.0 preserves existing behavior — adversaries can be
+        # fully discounted. Setting > 0 simulates production policies that
+        # never fully exclude an agent (regulatory or graceful-degrade scenarios).
+        self._trust_floor: float = max(0.0, min(1.0, trust_floor))
         # Anti-reidentification: rotate published indices periodically
         self._ROTATION_INTERVAL: int = 10  # Rotate indices every N calls
         self._rotation_counter: int = 0
@@ -204,10 +213,10 @@ class ARGUSTrustChannel:
             elif obs_type in ("spatial_inflation", "under_reporting_risk",
                               "clock_drift_excessive", "projection_poisoning"):
                 severity = observation.get("severity", 1.0)
-                current = max(0.0, current - self._decay_rate * severity)
-                # Lower the recovery ceiling permanently
+                current = max(self._trust_floor, current - self._decay_rate * severity)
+                # Lower the recovery ceiling permanently — also clamped to floor
                 floor = self._penalty_floor.get(agent_id, 1.0)
-                self._penalty_floor[agent_id] = max(0.0, floor - 0.1 * severity)
+                self._penalty_floor[agent_id] = max(self._trust_floor, floor - 0.1 * severity)
             # Unknown types don't change trust — fail safe
 
             self._trust_scores[agent_id] = current

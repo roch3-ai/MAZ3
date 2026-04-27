@@ -1,0 +1,6 @@
+# Brecha A + B experiments — analysis & plotting
+# These are NOT required for the core MAZ3 runtime.
+# Install only if running experiments/brecha_*/run_*.py.
+scipy>=1.11
+pandas>=2.0
+matplotlib>=3.7

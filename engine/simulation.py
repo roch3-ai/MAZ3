@@ -60,6 +60,8 @@ class SimulationConfig:
     record_every_n: int = 1  # record snapshot every N cycles
     jitter_seed: Optional[int] = None
     seed: Optional[int] = None  # global RNG seed for full determinism
+    # Brecha A: minimum trust floor for ARGUS. 0.0 = default (full discount allowed).
+    trust_floor: float = 0.0
 
 
 @dataclass
@@ -89,7 +91,7 @@ class SimulationEngine:
 
         # Core subsystems
         self._buffer = SovereignProjectionBuffer()
-        self._argus = ARGUSTrustChannel(self._buffer)
+        self._argus = ARGUSTrustChannel(self._buffer, trust_floor=config.trust_floor)
         self._gamma = GammaOperator()
         self._jitter = NetworkJitterModel(
             config.network_profile,
@@ -331,6 +333,34 @@ class SimulationEngine:
             # NOTE: a malicious agent may ignore the MVR. The motor
             # enforces D2/D3/D4 below, regardless of agent compliance.
             agent.act(effective_mvr, self._config.dt)
+
+            # Brecha B: Integrity_extended — capture intended velocity
+            # post-act() but PRE-enforcement. This is what the agent
+            # "wanted" to do; the engine may then override it.
+            # An agent that ignores shared_mvr constraints (e.g. Greedy
+            # voluntarily ignoring D2) shows up here as non-compliant.
+            intended_vx, intended_vy = agent.velocity
+            intended_speed = (intended_vx * intended_vx + intended_vy * intended_vy) ** 0.5
+            constraint_max_speed = effective_mvr.get(
+                "constraint_set", {}
+            ).get("max_speed", float("inf"))
+            compliant = intended_speed <= constraint_max_speed * 1.05
+            if (self._session_id
+                    and self._cycle % self._config.record_every_n == 0):
+                agent_idx_compl = self._buffer.get_index_for_agent(agent.agent_id)
+                if agent_idx_compl is not None:
+                    self._recorder.record_custom_metric(
+                        session_id=self._session_id,
+                        cycle_number=self._cycle,
+                        metric_name="agent_intent_compliance",
+                        metric_value=1.0 if compliant else 0.0,
+                        metadata={
+                            "agent_index": agent_idx_compl,
+                            "intended_speed": intended_speed,
+                            "max_speed_constraint": constraint_max_speed,
+                            "deference_level": int(action.level.value),
+                        },
+                    )
 
             # =========================================================
             # PHYSICAL ENFORCEMENT — D3/D4 cannot be ignored by agents

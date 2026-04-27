@@ -34,6 +34,10 @@ from agents.base_agent import BaseAgent, AgentConfig
 from agents.reference_syncference import ReferenceSyncferenceAgent
 from agents.reference_random import ReferenceRandomAgent
 from agents.reference_greedy import ReferenceGreedyAgent
+from agents.adversarial_inflator import AdversarialInflatorAgent
+from agents.adversarial_underreporter import AdversarialUnderreporterAgent
+from agents.adversarial_mixed import AdversarialMixedAgent
+from agents.adversarial_burst_recovery import AdversarialBurstRecoveryAgent
 from engine.simulation import SimulationEngine, SimulationConfig
 from roch3.void_index import VoidConfig
 
@@ -194,6 +198,118 @@ def create_bottleneck_agents(
         raise ValueError(f"Unknown agent_types: {agent_types}")
 
     return agents
+
+
+def create_bottleneck_with_focal_agent(
+    focal_type: str,
+    bottleneck_cfg: Optional[BottleneckConfig] = None,
+    network_profile: str = "ideal",
+    max_cycles: int = 100,
+    db_path: str = ":memory:",
+    jitter_seed: int = 42,
+    trust_floor: float = 0.0,
+    activate_after_cycle: int = 5,
+    inflation_factor: float = 3.0,
+    burst_period: int = 10,
+) -> tuple[SimulationEngine, BottleneckConfig]:
+    """
+    Create a Bottleneck simulation with 1 focal agent + 2 Syncference baselines.
+
+    Brecha A/B factory: the focal agent's type is the experimental variable.
+    The 2 Syncference baselines provide a coordination context for the focal agent.
+
+    focal_type ∈ {"syncference", "greedy", "inflator", "underreporter",
+                  "mixed", "burst_recovery"}
+    """
+    cfg = bottleneck_cfg or BottleneckConfig()
+    cy = cfg.corridor_y_center
+
+    sim_config = SimulationConfig(
+        scenario=f"bottleneck_focal_{focal_type}",
+        network_profile=network_profile,
+        dt=0.1,
+        max_cycles=max_cycles,
+        boundary=(0, 0, cfg.field_width, cfg.field_height),
+        void_config=VoidConfig(
+            width=cfg.field_width,
+            height=cfg.field_height,
+            resolution=1.0,
+        ),
+        db_path=db_path,
+        jitter_seed=jitter_seed,
+        trust_floor=trust_floor,
+    )
+    engine = SimulationEngine(sim_config)
+
+    # 2 Syncference baselines (right and offset-left)
+    sync_right = ReferenceSyncferenceAgent(
+        AgentConfig(
+            agent_id="bl_sync_right",
+            start_position=(45.0, cy),
+            max_speed=cfg.max_speed,
+            min_separation=cfg.min_separation,
+        ),
+        goal=(5.0, cy),
+    )
+    sync_offset = ReferenceSyncferenceAgent(
+        AgentConfig(
+            agent_id="bl_sync_offset",
+            start_position=(5.0, cy + 4.0),
+            max_speed=cfg.max_speed,
+            min_separation=cfg.min_separation,
+        ),
+        goal=(45.0, cy),
+    )
+
+    # Focal agent — left side, heading right
+    focal_cfg = AgentConfig(
+        agent_id=f"focal_{focal_type}",
+        start_position=(5.0, cy),
+        max_speed=cfg.max_speed,
+        min_separation=cfg.min_separation,
+    )
+    focal_goal = (45.0, cy)
+
+    if focal_type == "syncference":
+        focal = ReferenceSyncferenceAgent(focal_cfg, goal=focal_goal)
+    elif focal_type == "greedy":
+        focal = ReferenceGreedyAgent(focal_cfg, goal=focal_goal)
+    elif focal_type == "inflator":
+        focal = AdversarialInflatorAgent(
+            focal_cfg,
+            goal=focal_goal,
+            inflation_factor=inflation_factor,
+            activate_after_cycle=activate_after_cycle,
+        )
+    elif focal_type == "underreporter":
+        focal = AdversarialUnderreporterAgent(
+            focal_cfg,
+            goal=focal_goal,
+            activate_after_cycle=activate_after_cycle,
+        )
+    elif focal_type == "mixed":
+        focal = AdversarialMixedAgent(
+            focal_cfg,
+            goal=focal_goal,
+            inflation_factor=inflation_factor,
+            activate_after_cycle=activate_after_cycle,
+        )
+    elif focal_type == "burst_recovery":
+        focal = AdversarialBurstRecoveryAgent(
+            focal_cfg,
+            goal=focal_goal,
+            burst_period=burst_period,
+            inflation_factor=inflation_factor,
+            activate_after_cycle=activate_after_cycle,
+        )
+    else:
+        raise ValueError(f"Unknown focal_type: {focal_type}")
+
+    engine.add_agent(focal)
+    engine.add_agent(sync_right)
+    engine.add_agent(sync_offset)
+
+    return engine, cfg
 
 
 def create_bottleneck_simulation(
